@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Farm - Local & Fresh</title>
+            <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #FBF8F1; 
+        }
+        
+        .font-serif { 
+            font-family: 'Playfair Display', serif; 
+        }
+        
+        .entry-bg { 
+            background-image: url('https://images.unsplash.com/photo-1499529112087-3cb3b73cec95?q=80&w=2574&auto=format&fit=crop'); 
+            background-size: cover; 
+            background-position: center;
+        }
+        
+        ::selection { background-color: #FDB833; color: #2C5F2D; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #FBF8F1; }
+        ::-webkit-scrollbar-thumb { background: #d4c8b4; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #c5b69f; }
+
+        /* Animations */
+        .animate-fade-in-down { animation: fade-in-down 0.8s ease-out; }
+        .animate-fade-in-up { animation: fade-in-up 0.8s ease-out 0.2s backwards; }
+        .animate-fade-in { animation: fade-in 0.6s ease-in-out; }
+        .animate-fade-in-fast { animation: fade-in 0.3s ease-in-out; }
+        .animate-scale-in { animation: scale-in 0.3s ease-in-out; }
+        .animate-toast-in { animation: toast-in 0.5s forwards; }
+        .animate-shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        
+        .scroll-animate { opacity: 0; transform: translateY(40px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+        .scroll-animate-in { opacity: 1; transform: translateY(0); }
+
+        @keyframes fade-in-down {
+            0% { opacity: 0; transform: translateY(-20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fade-in-up {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fade-in {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        @keyframes scale-in {
+            0% { transform: scale(0.97); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes toast-in {
+            0% { transform: translate(-50%, 100%); opacity: 0; }
+            100% { transform: translate(-50%, 0); opacity: 1; }
+        }
+        @keyframes shake {
+          10%, 90% { transform: translate3d(-1px, 0, 0); }
+          20%, 80% { transform: translate3d(2px, 0, 0); }
+          30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+          40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        /* Skeleton Loader */
+        .skeleton {
+            background-color: #e2e8f0;
+            border-radius: 0.5rem;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body class="text-[#2C5F2D]">
+    <div id="app-container"></div>
+    <div id="toast-container"></div>
+    
+    <script type="module">
+        // --- App State ---
+        let state = {
+            currentUser: null,
+            role: null, // 'farmer' or 'buyer'
+            farms: [],
+            products: [],
+            orders: [],
+            cart: [],
+            farmerView: 'dashboard',
+            buyerView: 'products',
+            isCartOpen: false,
+            isProfileDropdownOpen: false,
+            isChatOpen: false,
+            chatMessages: [],
+            productFilter: '',
+            categoryFilter: 'All',
+            language: 'en',
+            isMobileMenuOpen: false,
+        };
+
+        // --- DOM Nodes ---
+        const appContainer = document.getElementById('app-container');
+        const toastContainer = document.getElementById('toast-container');
+        
+        // --- Mock Data ---
+        const mockFarmer = { 
+            uid: 'farmer-123',
+            displayName: 'John Farmer', 
+            email: 'john@gofarm.app', 
+            photoURL: 'https://placehold.co/100x100/FBF8F1/2C5F2D?text=F' 
+        };
+        const mockBuyer = { 
+            uid: 'buyer-456',
+            displayName: 'Jane Doe', 
+            email: 'jane@email.com', 
+            photoURL: 'https://placehold.co/100x100/FBF8F1/2C5F2D?text=B' 
+        };
+        const mockFarmsData = [ 
+            {id: 'f1', name: 'Green Valley Organics', ownerId: 'farmer-123', description: 'A family-owned farm dedicated to sustainable and organic vegetable farming for over 30 years. We believe in healthy soil, healthy plants, and healthy people.'}, 
+        ];
+        const mockProductsData = [ 
+            {id: 'p1', name: 'Organic Tomatoes', price: 3.50, stock: 150, unit: 'kg', image: 'https://images.unsplash.com/photo-1598512752271-33f913a53133?q=80&w=2574&auto=format&fit=crop', category: 'Vegetables', ownerId: 'farmer-123', description: 'Freshly harvested, juicy organic tomatoes.', reviews: [{rating: 5, text: "Absolutely delicious! The best tomatoes I've ever had.", author: "Jane D."}, {rating: 4, text: "Very good, will buy again."}]}, 
+            {id: 'p2', name: 'Fresh Farm Eggs', price: 5.00, stock: 80, unit: 'dozen', image: 'https://images.unsplash.com/photo-1587598214902-8924b8a25c14?q=80&w=2574&auto=format&fit=crop', category: 'Dairy & Eggs', ownerId: 'farmer-123', description: 'Organic, free-range chicken eggs.', reviews: [{rating: 5, text: "You can taste the difference. Bright orange yolks!", author: "Mark C."}]},
+            {id: 'p3', name: 'Artisanal Bread', price: 7.50, stock: 40, unit: 'loaf', image: 'https://images.unsplash.com/photo-1549932879-19a78a5ac412?q=80&w=2574&auto=format&fit=crop', category: 'Grains', ownerId: 'farmer-123', description: 'Sourdough bread baked fresh daily.', reviews: []},
+            {id: 'p4', name: 'Crisp Apples', price: 2.50, stock: 200, unit: 'kg', image: 'https://images.unsplash.com/photo-1560806887-1e4cd0b69665?q=80&w=2574&auto=format&fit=crop', category: 'Fruits', ownerId: 'farmer-123', description: 'Sweet and crunchy apples, perfect for snacking.', reviews: [{rating: 5, text: "So crisp and fresh!", author: "Alice W."}]},
+            {id: 'p5', name: 'Raw Honey', price: 12.00, stock: 50, unit: 'jar', image: 'https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?q=80&w=2574&auto=format&fit=crop', category: 'Other', ownerId: 'farmer-123', description: '100% pure, raw honey from local wildflowers.', reviews: []},
+        ];
+
+        // --- Gemini API Integration ---
+        const GEMINI_API_KEY = ""; // IMPORTANT: This should be an empty string. The environment will provide it.
+        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
+        
+        const callGeminiAPI = async (prompt, systemInstruction = "") => {
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+            };
+            if (systemInstruction) {
+                payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+            }
+
+            try {
+                const response = await fetch(GEMINI_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    return text;
+                } else {
+                    throw new Error("No text found in API response.");
+                }
+            } catch (error) {
+                console.error("Gemini API call error:", error);
+                showToast("An AI error occurred. Please try again.");
+                return null;
+            }
+        };
+
+
+        // --- SVG Icons ---
+        const HomeIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`;
+        const PackageIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`;
+        const ClipboardListIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>`;
+        const ShoppingCartIcon = (props) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${props.className}"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>`;
+        const PlusIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        const XIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+        const LeafIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13V8a5 5 0 0 1 10 0v5a7 7 0 0 1-7 7Z"></path><path d="M20.32 8.68A5.01 5.01 0 0 0 15 5.5s-2.5-2-4-2c-2 0-3.5 1.5-3.5 3.5s1.5 3.5 3.5 3.5c1.5 0 3-1 3-1s.5-1.5 2-1.5c1 0 2.5 1.5 2.5 3.5s-1.5 3.5-3.5 3.5c-1.5 0-3-1-3-1s-1-1.5-2.5-1.5a2.5 2.5 0 0 0-2.5 2.5c0 .83.34 1.58.88 2.12"></path></svg>`;
+        const LogOutIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`;
+        const SpinnerIcon = ({className=""}) => `<svg class="animate-spin h-5 w-5 ${className}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+        const BotIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>`;
+        const SendIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+        const StarIcon = ({ filled, className="" }) => `<svg class="${className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="${filled ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        const DollarSignIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`;
+        const TrendingUpIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>`;
+        const TagIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"></path><path d="M7 7h.01"></path></svg>`;
+        const SparklesIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 1.9-1.9-1.9-1.9 1.9-1.9-1.9L3 3l1.9 1.9L3 6.8l1.9 1.9L3 10.6l1.9 1.9L3 14.4l1.9 1.9L3 18.2l1.9 1.9L3 22l1.9-1.9 1.9 1.9 1.9-1.9 1.9 1.9 1.9-1.9 1.9 1.9 1.9-1.9 1.9 1.9 1.9-1.9 1.9 1.9 1.9-1.9 1.9 1.9-1.9-1.9-1.9 1.9-1.9-1.9Z"/></svg>`;
+        const LightbulbIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5C17.7 10.2 18 9 18 7.5a6 6 0 0 0-12 0c0 1.5.3 2.7 1.5 3.9.8.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`;
+        const SearchIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
+        const MessageSquareIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+        const UsersIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+        const HeartIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="${props.filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`;
+        const RepeatIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`;
+        const GlobeIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+        const MenuIcon = (props) => `<svg class="${props.className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`;
+
+        
+        // --- Translations ---
+        const translations = {
+            en: {
+                appName: "Go Farm",
+                appSlogan: "Know your farmer, love your food.",
+                enterAsFarmer: "Enter as a Farmer",
+                farmerDescription: "Sell products and manage your farm.",
+                enterAsBuyer: "Enter as a Buyer",
+                buyerDescription: "Discover and purchase fresh goods.",
+                dashboard: "Dashboard",
+                products: "Products",
+                orders: "Orders",
+                growGuide: "Grow Guide",
+                exitRole: "Exit Role",
+                salesAnalytics: "Sales Analytics",
+                totalRevenue: "Total Revenue",
+                bestSeller: "Best Seller",
+                productsListed: "Products Listed",
+                salesLast7Days: "Sales Last 7 Days",
+                myProducts: "My Products",
+                addProduct: "Add Product",
+                product: "Product",
+                price: "Price",
+                stock: "Stock",
+                actions: "Actions",
+                edit: "Edit",
+                delete: "Delete",
+                noProducts: "You haven't added any products yet.",
+                incomingOrders: "Incoming Orders",
+                orderId: "Order ID",
+                buyer: "Buyer",
+                total: "Total",
+                status: "Status",
+                noOrders: "No orders yet.",
+                getAdvice: "Get Advice",
+                aiAdvicePlaceholder: "Your AI-powered advice will appear here.",
+                searchProducts: "Search products...",
+                myOrders: "My Orders",
+                favorites: "Favorites",
+                subscriptions: "Subscriptions",
+                addToCart: "Add to Cart",
+                yourCart: "Your Cart",
+                placeOrder: "Place Order",
+                generateRecipe: "✨ Generate Recipe",
+                aiAssistant: "AI Assistant",
+                askSomething: "Ask something...",
+                confirmDelete: "Are you sure?",
+                confirmDeleteMessage: "This product will be permanently deleted. This action cannot be undone.",
+                cancel: "Cancel",
+                addProductTitle: "Add New Product",
+                editProductTitle: "Edit Product",
+                productName: "Product Name",
+                unit: "Unit (e.g., kg, dozen)",
+                category: "Category",
+                description: "Description",
+                imageUrl: "Image URL",
+                imagePreview: "Image Preview",
+                saveChanges: "Save Changes",
+                writeForMe: "✨ Write for me",
+                getPairingIdeas: "✨ Get Pairing Ideas",
+                pairsWellWith: "Pairs well with:",
+                reviews: "Reviews",
+                noReviews: "No reviews for this product yet.",
+                messageUser: "Message",
+                messageAboutOrder: "Message about Order",
+            },
+            hi: {
+                appName: "गो फार्म",
+                appSlogan: "अपने किसान को जानें, अपने भोजन से प्यार करें।",
+                enterAsFarmer: "किसान के रूप में प्रवेश करें",
+                farmerDescription: "उत्पाद बेचें और अपने खेत का प्रबंधन करें।",
+                enterAsBuyer: "खरीदार के रूप में प्रवेश करें",
+                buyerDescription: "ताजा स्थानीय सामान खोजें और खरीदें।",
+                dashboard: "डैशबोर्ड",
+                products: "उत्पाद",
+                orders: "आदेश",
+                growGuide: "विकास गाइड",
+                exitRole: "भूमिका से बाहर निकलें",
+                salesAnalytics: "बिक्री विश्लेषण",
+                totalRevenue: "कुल राजस्व",
+                bestSeller: "सबसे ज्यादा बिकने वाला",
+                productsListed: "सूचीबद्ध उत्पाद",
+                salesLast7Days: "पिछले 7 दिनों की बिक्री",
+                myProducts: "मेरे उत्पाद",
+                addProduct: "उत्पाद जोड़ें",
+                product: "उत्पाद",
+                price: "कीमत",
+                stock: "स्टॉक",
+                actions: "कार्रवाई",
+                edit: "संपादित करें",
+                delete: "हटाएं",
+                noProducts: "आपने अभी तक कोई उत्पाद नहीं जोड़ा है।",
+                incomingOrders: "आने वाले आदेश",
+                orderId: "आदेश आईडी",
+                buyer: "खरीदार",
+                total: "कुल",
+                status: "स्थिति",
+                noOrders: "अभी तक कोई आदेश नहीं है।",
+                getAdvice: "सलाह लें",
+                aiAdvicePlaceholder: "आपकी AI-संचालित सलाह यहां दिखाई देगी।",
+                searchProducts: "उत्पाद खोजें...",
+                myOrders: "मेरे आदेश",
+                favorites: "पसंदीदा",
+                subscriptions: "सदस्यता",
+                addToCart: "कार्ट में डालें",
+                yourCart: "आपकी कार्ट",
+                placeOrder: "आदेश दें",
+                generateRecipe: "✨ रेसिपी बनाएं",
+                aiAssistant: "AI सहायक",
+                askSomething: "कुछ पूछें...",
+                confirmDelete: "क्या आप निश्चित हैं?",
+                confirmDeleteMessage: "यह उत्पाद स्थायी रूप से हटा दिया जाएगा। यह क्रिया पूर्ववत नहीं की जा सकती।",
+                cancel: "रद्द करें",
+                addProductTitle: "नया उत्पाद जोड़ें",
+                editProductTitle: "उत्पाद संपादित करें",
+                productName: "उत्पाद का नाम",
+                unit: "इकाई (जैसे, किलो, दर्जन)",
+                category: "श्रेणी",
+                description: "विवरण",
+                imageUrl: "छवि यूआरएल",
+                imagePreview: "छवि पूर्वावलोकन",
+                saveChanges: "बदलाव सहेजें",
+                writeForMe: "✨ मेरे लिए लिखें",
+                getPairingIdeas: "✨ पेयरिंग आइडिया प्राप्त करें",
+                pairsWellWith: "इसके साथ अच्छा लगता है:",
+                reviews: "समीक्षाएं",
+                noReviews: "इस उत्पाद के लिए अभी तक कोई समीक्षा नहीं है।",
+                messageUser: "संदेश",
+                messageAboutOrder: "आदेश के बारे में संदेश",
+            },
+            te: {
+                appName: "గో ఫార్మ్",
+                appSlogan: "మీ రైతును తెలుసుకోండి, మీ ఆహారాన్ని ప్రేమించండి.",
+                enterAsFarmer: "రైతుగా ప్రవేశించండి",
+                farmerDescription: "ఉత్పత్తులను అమ్మండి మరియు మీ వ్యవసాయాన్ని నిర్వహించండి.",
+                enterAsBuyer: "కొనుగోలుదారుగా ప్రవేశించండి",
+                buyerDescription: "తాజా స్థానిక వస్తువులను కనుగొని కొనండి.",
+                dashboard: "డాష్‌బోర్డ్",
+                products: "ఉత్పత్తులు",
+                orders: "ఆర్డర్లు",
+                growGuide: "గ్రో గైడ్",
+                exitRole: "పాత్ర నుండి నిష్క్రమించండి",
+                salesAnalytics: "అమ్మకాల విశ్లేషణలు",
+                totalRevenue: "మొత్తం ఆదాయం",
+                bestSeller: "అత్యధికంగా అమ్ముడైనది",
+                productsListed: "జాబితా చేయబడిన ఉత్పత్తులు",
+                salesLast7Days: "గత 7 రోజుల అమ్మకాలు",
+                myProducts: "నా ఉత్పత్తులు",
+                addProduct: "ఉత్పత్తిని జోడించండి",
+                product: "ఉత్పత్తి",
+                price: "ధర",
+                stock: "స్టాక్",
+                actions: "చర్యలు",
+                edit: "సవరించండి",
+                delete: "తొలగించు",
+                noProducts: "మీరు ఇంకా ఏ ఉత్పత్తులను జోడించలేదు.",
+                incomingOrders: "ఇన్‌కమింగ్ ఆర్డర్‌లు",
+                orderId: "ఆర్డర్ ID",
+                buyer: "కొనుగోలుదారు",
+                total: "మొత్తం",
+                status: "స్థితి",
+                noOrders: "ఇంకా ఆర్డర్లు లేవు.",
+                getAdvice: "సలహా పొందండి",
+                aiAdvicePlaceholder: "మీ AI-ఆధారిత సలహా ఇక్కడ కనిపిస్తుంది.",
+                searchProducts: "ఉత్పత్తులను శోధించండి...",
+                myOrders: "నా ఆర్డర్లు",
+                favorites: "ఇష్టమైనవి",
+                subscriptions: "చందాలు",
+                addToCart: "కార్ట్‌కు జోడించండి",
+                yourCart: "మీ కార్ట్",
+                placeOrder: "ఆర్డర్ చేయండి",
+                generateRecipe: "✨ వంటకం సృష్టించండి",
+                aiAssistant: "AI సహాయకుడు",
+                askSomething: "ఏదైనా అడగండి...",
+                confirmDelete: "మీరు ఖచ్చితంగా ఉన్నారా?",
+                confirmDeleteMessage: "ఈ ఉత్పత్తి శాశ్వతంగా తొలగించబడుతుంది. ఈ చర్యను అన్డు చేయలేరు.",
+                cancel: "రద్దు చేయండి",
+                addProductTitle: "కొత్త ఉత్పత్తిని జోడించండి",
+                editProductTitle: "ఉత్పత్తిని సవరించండి",
+                productName: "ఉత్పత్తి పేరు",
+                unit: "యూనిట్ (ఉదా., కిలో, డజను)",
+                category: "వర్గం",
+                description: "వివరణ",
+                imageUrl: "చిత్రం URL",
+                imagePreview: "చిత్రం ప్రివ్యూ",
+                saveChanges: "మార్పులనుభద్రపరచు",
+                writeForMe: "✨ నా కోసం వ్రాయండి",
+                getPairingIdeas: "✨ జత చేసే ఆలోచనలు పొందండి",
+                pairsWellWith: "దీనితో బాగా జత అవుతుంది:",
+                reviews: "సమీక్షలు",
+                noReviews: "ఈ ఉత్పత్తికి ఇంకా సమీక్షలు లేవు.",
+                messageUser: "సందేశం",
+                messageAboutOrder: "ఆర్డర్ గురించి సందేశం",
+            }
+        };
+
+        const t = (key) => translations[state.language][key] || key;
+
+        // --- Reusable Component Functions ---
+        const showToast = (message) => {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#2C5F2D] text-white px-6 py-3 rounded-full shadow-lg z-[100] animate-toast-in font-semibold';
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        };
+
+        const ModalHTML = (content, id) => `
+            <div id="${id}" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-fade-in-fast">
+                <div class="bg-[#FBF8F1] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative transform transition-all duration-300 scale-95 animate-scale-in border border-black/10">
+                    <button data-action="close-modal" data-target="${id}" class="absolute top-4 right-4 text-gray-400 hover:text-[#2C5F2D] transition-colors z-10 p-1 bg-white/50 rounded-full">${XIcon({})}</button>
+                    ${content}
+                </div>
+            </div>
+        `;
+        
+        const ProfileDropdownHTML = (user) => `
+            <div class="relative">
+                <button data-action="toggle-profile-dropdown" class="transition-transform duration-300 transform hover:scale-110 focus:outline-none">
+                    <img src="${user.photoURL}" alt="${user.displayName}" class="w-11 h-11 rounded-full border-2 border-white/50 shadow-md bg-[#FBF8F1]" />
+                </button>
+                <div id="profile-dropdown" class="absolute right-0 mt-3 w-56 bg-[#FBF8F1] rounded-xl shadow-2xl py-2 z-50 animate-fade-in-fast border border-black/10 ${state.isProfileDropdownOpen ? '' : 'hidden'}">
+                    <div class="px-4 py-2 border-b border-black/10">
+                        <p class="font-bold text-[#2C5F2D] truncate font-serif">${user.displayName}</p>
+                        <p class="text-sm text-gray-500 truncate">${user.email}</p>
+                    </div>
+                    <button data-action="exit-role" class="w-full text-left px-4 py-3 text-[#E57373] hover:bg-[#E57373]/10 flex items-center space-x-3 transition-colors">
+                        ${LogOutIcon({className: "w-5 h-5"})}
+                        <span class="font-semibold">${t('exitRole')}</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // --- Template/Component Functions ---
+        const EntryScreenHTML = () => `
+            <div class="min-h-screen flex flex-col items-center justify-center p-4 entry-bg">
+                <div class="absolute inset-0 bg-black/60"></div>
+                <div class="relative z-10 text-center text-white animate-fade-in-down mb-12">
+                    ${LeafIcon({className: "mx-auto w-24 h-24 text-[#FDB833] drop-shadow-lg"})}
+                    <h1 class="text-5xl md:text-7xl font-extrabold font-serif mt-4" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.5)">${t('appName')}</h1>
+                    <p class="text-lg md:text-xl text-[#FBF8F1] mt-4 max-w-xl" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7)">${t('appSlogan')}</p>
+                </div>
+                <div class="relative z-10 flex flex-col md:flex-row gap-8 animate-fade-in-up">
+                    <div data-action="set-role" data-role="farmer" class="p-8 border-2 border-transparent rounded-2xl shadow-lg hover:shadow-2xl hover:border-[#2C5F2D] cursor-pointer transition-all duration-300 transform hover:-translate-y-2 bg-[#FBF8F1] w-72 text-center">
+                        <span class="text-6xl mb-4 block" role="img" aria-label="farmer">🧑‍🌾</span>
+                        <h2 class="text-2xl font-bold font-serif text-[#2C5F2D]">${t('enterAsFarmer')}</h2>
+                        <p class="text-gray-500 mt-2">${t('farmerDescription')}</p>
+                    </div>
+                    <div data-action="set-role" data-role="buyer" class="p-8 border-2 border-transparent rounded-2xl shadow-lg hover:shadow-2xl hover:border-[#A8DADC] cursor-pointer transition-all duration-300 transform hover:-translate-y-2 bg-[#FBF8F1] w-72 text-center">
+                        <span class="text-6xl mb-4 block" role="img" aria-label="buyer">🛒</span>
+                        <h2 class="text-2xl font-bold font-serif text-[#2C5F2D]">${t('enterAsBuyer')}</h2>
+                        <p class="text-gray-500 mt-2">${t('buyerDescription')}</p>
+                    </div>
+                 </div>
+            </div>
+        `;
+
+        const FarmerDashboardHTML = (products, orders, user) => {
+            const totalRevenue = orders.filter(o => o.status === 'Delivered').reduce((acc, order) => acc + order.total, 0);
+            
+            const salesByProduct = orders.flatMap(o => o.items).reduce((acc, item) => {
+                acc[item.name] = (acc[item.name] || 0) + item.quantity;
+                return acc;
+            }, {});
+
+            const bestSellingProduct = Object.keys(salesByProduct).length > 0 ? Object.entries(salesByProduct).sort((a,b) => b[1] - a[1])[0][0] : 'None';
+
+            const salesLast7Days = [...Array(7)].map((_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                const total = orders.filter(o => o.createdAt.startsWith(dateStr) && o.status === 'Delivered').reduce((acc, order) => acc + order.total, 0);
+                return { day: d.toLocaleDateString('en-US', { weekday: 'short'}), total };
+            }).reverse();
+
+            const maxSales = Math.max(1, ...salesLast7Days.map(d => d.total));
+
+            const templates = {};
+
+            templates.DashboardView = `
+                <div class="p-4 md:p-8 animate-fade-in">
+                    <h1 class="text-4xl font-serif font-bold text-[#2C5F2D] mb-8">${t('salesAnalytics')}</h1>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                         <div class="bg-white/50 p-6 rounded-2xl shadow-lg border border-black/5 flex items-center gap-4"><div class="bg-green-100 p-3 rounded-full">${DollarSignIcon({className:"w-8 h-8 text-green-700"})}</div><div><h2 class="text-lg font-bold font-serif text-[#2C5F2D]">${t('totalRevenue')}</h2><p class="text-4xl font-extrabold text-[#2C5F2D]" data-count-up="${totalRevenue}" data-prefix="$">0</p></div></div>
+                         <div class="bg-white/50 p-6 rounded-2xl shadow-lg border border-black/5 flex items-center gap-4"><div class="bg-yellow-100 p-3 rounded-full">${TrendingUpIcon({className:"w-8 h-8 text-yellow-700"})}</div><div><h2 class="text-lg font-bold font-serif text-[#2C5F2D]">${t('bestSeller')}</h2><p class="text-3xl font-extrabold text-[#2C5F2D] truncate">${bestSellingProduct}</p></div></div>
+                         <div class="bg-white/50 p-6 rounded-2xl shadow-lg border border-black/5 flex items-center gap-4"><div class="bg-blue-100 p-3 rounded-full">${TagIcon({className:"w-8 h-8 text-blue-700"})}</div><div><h2 class="text-lg font-bold font-serif text-[#2C5F2D]">${t('productsListed')}</h2><p class="text-4xl font-extrabold text-[#2C5F2D]" data-count-up="${products.length}">0</p></div></div>
+                    </div>
+                     <div class="bg-white/50 p-6 rounded-2xl shadow-lg border border-black/5">
+                        <h2 class="text-xl font-bold font-serif text-[#2C5F2D] mb-4">${t('salesLast7Days')}</h2>
+                        <div class="flex justify-between items-end h-48 gap-2">
+                            ${salesLast7Days.map(day => `
+                                <div class="flex-1 flex flex-col items-center justify-end">
+                                    <div class="bg-[#2C5F2D] w-full rounded-t-lg hover:bg-green-700 transition-colors" style="height: ${maxSales > 0 ? (day.total / maxSales) * 100 : 0}%" title="$${day.total.toFixed(2)}"></div>
+                                    <span class="text-sm font-semibold text-gray-500 mt-2">${day.day}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                     </div>
+                </div>
+            `;
+            
+            templates.ProductsView = `
+                <div class="p-4 md:p-8 animate-fade-in">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                        <h1 class="text-4xl font-serif font-bold text-[#2C5F2D]">${t('myProducts')}</h1>
+                        <button data-action="add-product" class="w-full sm:w-auto px-5 py-3 bg-[#2C5F2D] text-white font-bold rounded-lg shadow-md hover:bg-[#5A3E2B] transition-all duration-300 transform hover:-translate-y-0.5">${t('addProduct')}</button>
+                    </div>
+                    <div class="bg-white/50 rounded-2xl shadow-lg border border-black/5 overflow-hidden">
+                        <table class="w-full">
+                            <thead class="bg-[#2C5F2D]/5"><tr class="text-left text-[#2C5F2D] font-semibold"><th class="p-4">${t('product')}</th><th class="p-4 hidden sm:table-cell">${t('price')}</th><th class="p-4 hidden md:table-cell">${t('stock')}</th><th class="p-4">${t('actions')}</th></tr></thead>
+                            <tbody>
+                                ${products.map(p => `
+                                    <tr key="${p.id}" class="border-t border-black/5">
+                                        <td class="p-4 font-semibold">${p.name}</td>
+                                        <td class="p-4 hidden sm:table-cell">$${p.price.toFixed(2)} / ${p.unit}</td>
+                                        <td class="p-4 hidden md:table-cell">${p.stock}</td>
+                                        <td class="p-4 space-x-2">
+                                            <button data-action="edit-product" data-product-id="${p.id}" class="text-[#2C5F2D] hover:underline">${t('edit')}</button>
+                                            <button data-action="delete-product" data-product-id="${p.id}" class="text-[#E57373] hover:underline">${t('delete')}</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${products.length === 0 ? `<tr><td colspan="4" class="text-center p-8 text-gray-500">${t('noProducts')}</td></tr>` : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            templates.OrdersView = `
+                <div class="p-4 md:p-8 animate-fade-in">
+                    <h1 class="text-4xl font-serif font-bold text-[#2C5F2D] mb-6">${t('incomingOrders')}</h1>
+                    <div class="bg-white/50 rounded-2xl shadow-lg border border-black/5 overflow-auto">
+                        <table class="w-full min-w-[600px]">
+                             <thead class="bg-[#2C5F2D]/5"><tr class="text-left text-[#2C5F2D] font-semibold"><th class="p-4">${t('orderId')}</th><th class="p-4">${t('buyer')}</th><th class="p-4">${t('total')}</th><th class="p-4">${t('status')}</th><th class="p-4">${t('actions')}</th></tr></thead>
+                             <tbody>
+                                ${orders.map(o => `
+                                    <tr key="${o.id}" class="border-t border-black/5">
+                                        <td class="p-4 font-mono text-sm truncate" title="${o.id}">${o.id.substring(0, 8)}...</td>
+                                        <td class="p-4 font-semibold">${o.buyerName}</td>
+                                        <td class="p-4 font-semibold">$${o.total.toFixed(2)}</td>
+                                        <td class="p-4"><span class="px-2 py-1 text-sm font-semibold rounded-full ${o.status === 'Pending' ? 'bg-yellow-200 text-yellow-800' : o.status === 'Shipped' ? 'bg-blue-200 text-blue-800' : 'bg-green-200 text-green-800'}">${o.status}</span></td>
+                                        <td class="p-4 flex items-center gap-2">
+                                            <select data-action="update-order-status" data-order-id="${o.id}" class="p-2 rounded-lg bg-white border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition">
+                                                <option ${o.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                                <option ${o.status === 'Shipped' ? 'selected' : ''}>Shipped</option>
+                                                <option ${o.status === 'Delivered' ? 'selected' : ''}>Delivered</option>
+                                            </select>
+                                            <button data-action="message-user" data-order-id="${o.id}" title="${t('messageUser')}" class="p-2 rounded-lg hover:bg-gray-200 transition-colors">${MessageSquareIcon({className:"w-5 h-5 text-gray-600"})}</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                 ${orders.length === 0 ? `<tr><td colspan="5" class="text-center p-8 text-gray-500">${t('noOrders')}</td></tr>` : ''}
+                             </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            templates.GrowGuideView = `
+                <div class="p-4 md:p-8 animate-fade-in">
+                     <h1 class="text-4xl font-serif font-bold text-[#2C5F2D] mb-2">${t('growGuide')}</h1>
+                     <p class="text-gray-600 mb-8">Get AI-powered planting and growing advice for your location.</p>
+                     <div class="bg-white/50 p-6 rounded-2xl shadow-lg border border-black/5">
+                        <form id="grow-guide-form" class="flex flex-col sm:flex-row items-center gap-2 mb-4">
+                            <input type="text" id="grow-guide-input" class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" placeholder="e.g., Best crops for September in Hyderabad">
+                            <button type="submit" class="w-full sm:w-auto px-5 py-3 bg-[#2C5F2D] text-white font-bold rounded-lg shadow-md hover:bg-[#5A3E2B] transition-colors flex items-center justify-center gap-2">
+                                ${LightbulbIcon({className:"w-5 h-5"})} ${t('getAdvice')}
+                            </button>
+                        </form>
+                        <div id="grow-guide-response" class="p-4 bg-white rounded-lg min-h-[10rem]">
+                            ${t('aiAdvicePlaceholder')}
+                        </div>
+                     </div>
+                </div>
+            `;
+            
+            const mainTemplate = `
+                <div class="flex min-h-screen bg-[#FBF8F1] font-sans">
+                    <div id="mobile-menu-overlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden" data-action="toggle-mobile-menu"></div>
+                    <aside id="farmer-sidebar" class="w-64 flex-col p-4 bg-[#2C5F2D]/95 backdrop-blur-md text-white shadow-2xl absolute md:static h-full md:h-auto z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300">
+                        <div class="flex items-center justify-between p-2 mb-8 border-b border-white/20 pb-4">
+                           <div class="flex items-center space-x-3">${LeafIcon({className: "w-9 h-9 text-[#FDB833]"})}<h1 class="text-3xl font-bold font-serif">${t('appName')}</h1></div>
+                           <button data-action="toggle-mobile-menu" class="md:hidden p-1">${XIcon({className: "w-6 h-6"})}</button>
+                        </div>
+                        <nav class="flex-1 space-y-3">
+                            <button data-action="set-farmer-view" data-view="dashboard" class="flex items-center w-full space-x-4 px-4 py-3 rounded-lg transition-all duration-300 ${state.farmerView === 'dashboard' ? 'bg-[#FDB833] text-[#2C5F2D] shadow-lg' : 'hover:bg-white/20'}">${HomeIcon({className: "w-6 h-6"})}<span class="font-semibold text-lg">${t('dashboard')}</span></button>
+                            <button data-action="set-farmer-view" data-view="products" class="flex items-center w-full space-x-4 px-4 py-3 rounded-lg transition-all duration-300 ${state.farmerView === 'products' ? 'bg-[#FDB833] text-[#2C5F2D] shadow-lg' : 'hover:bg-white/20'}">${PackageIcon({className: "w-6 h-6"})}<span class="font-semibold text-lg">${t('products')}</span></button>
+                            <button data-action="set-farmer-view" data-view="orders" class="flex items-center w-full space-x-4 px-4 py-3 rounded-lg transition-all duration-300 ${state.farmerView === 'orders' ? 'bg-[#FDB833] text-[#2C5F2D] shadow-lg' : 'hover:bg-white/20'}">${ClipboardListIcon({className: "w-6 h-6"})}<span class="font-semibold text-lg">${t('orders')}</span></button>
+                            <button data-action="set-farmer-view" data-view="grow" class="flex items-center w-full space-x-4 px-4 py-3 rounded-lg transition-all duration-300 ${state.farmerView === 'grow' ? 'bg-[#FDB833] text-[#2C5F2D] shadow-lg' : 'hover:bg-white/20'}">${SparklesIcon({className: "w-6 h-6"})}<span class="font-semibold text-lg">${t('growGuide')}</span></button>
+                        </nav>
+                        <div class="mt-auto pt-4 border-t border-white/20">${ProfileDropdownHTML(user)}</div>
+                    </aside>
+                    <main class="flex-1 flex flex-col">
+                         <header class="md:hidden flex items-center justify-between p-4 bg-[#FBF8F1]/80 backdrop-blur-md shadow-sm border-b border-black/10">
+                            <button data-action="toggle-mobile-menu">${MenuIcon({className:"w-6 h-6"})}</button>
+                            <div class="flex items-center space-x-2">${LeafIcon({className: "w-7 h-7 text-[#2C5F2D]"})}<h1 class="text-2xl font-bold text-[#2C5F2D] font-serif">${t('appName')}</h1></div>
+                            <div></div>
+                         </header>
+                        <div id="farmer-content-container" class="flex-1 overflow-y-auto"></div>
+                    </main>
+                    <div id="modal-container"></div>
+                </div>
+            `;
+
+            return { mainTemplate, ...templates };
+        };
+
+        const BuyerInterfaceHTML = (farms, products, orders, user) => {
+             const getAvgRating = (product) => {
+                if (!product.reviews || product.reviews.length === 0) return 0;
+                const total = product.reviews.reduce((acc, review) => acc + review.rating, 0);
+                return total / product.reviews.length;
+             }
+
+             const ProductCard = (product) => {
+                const farm = farms.find(f => f.ownerId === product.ownerId);
+                const avgRating = getAvgRating(product);
+                return `
+                    <div data-action="show-product-details" data-product-id="${product.id}" class="bg-white rounded-2xl shadow-lg overflow-hidden group flex flex-col transform transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 border border-black/5 scroll-animate cursor-pointer">
+                        <div class="relative">
+                            <img src="${product.image}" alt="${product.name}" class="w-full h-56 object-cover transform transition-transform duration-300 group-hover:scale-105" />
+                            <div class="absolute top-0 right-0 m-3 bg-[#FBF8F1]/80 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-[#2C5F2D]">${product.category}</div>
+                            ${avgRating > 0 ? `<div class="absolute bottom-0 left-0 m-3 bg-[#FBF8F1]/80 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-[#2C5F2D] flex items-center gap-1">${StarIcon({filled: true, className:"w-4 h-4 text-yellow-500"})} ${avgRating.toFixed(1)}</div>` : ''}
+                        </div>
+                        <div class="p-5 flex flex-col flex-grow">
+                            <h3 class="font-serif font-bold text-2xl text-[#2C5F2D] truncate">${product.name}</h3>
+                            ${farm ? `<p data-action="show-farm-profile" data-farm-id="${farm.id}" class="text-gray-500 text-sm mb-2 hover:text-[#2C5F2D] hover:underline z-20 relative">${farm.name}</p>`: ''}
+                            <div class="mt-auto flex justify-between items-center pt-4">
+                                <p class="text-[#2C5F2D] font-bold text-2xl">$${product.price?.toFixed(2) || '0.00'} <span class="text-gray-500 font-normal text-sm">/${product.unit}</span></p>
+                                <button data-action="add-to-cart" data-product-id="${product.id}" class="flex items-center justify-center w-12 h-12 bg-[#2C5F2D] text-white rounded-full font-semibold transition-all duration-300 transform group-hover:w-auto group-hover:px-6 hover:bg-[#5A3E2B] shadow-md hover:shadow-lg z-10">
+                                    ${PlusIcon({className: "w-6 h-6 transition-opacity duration-200 group-hover:opacity-0 group-hover:absolute"})}
+                                    <span class="absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-hover:static whitespace-nowrap">${t('addToCart')}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            };
+
+            const templates = {};
+
+            templates.ProductsView = (filteredProducts) => {
+                const categories = ['All', ...new Set(state.products.map(p => p.category))];
+                return `
+                    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+                        <div class="text-center mb-8 animate-fade-in-down">
+                            <h2 class="text-4xl md:text-5xl font-extrabold text-[#2C5F2D] font-serif mb-3">${t('appSlogan')}</h2>
+                            <p class="text-lg text-gray-600 max-w-3xl mx-auto">Discover the freshest local goods right here.</p>
+                        </div>
+                        <div class="flex justify-center flex-wrap gap-2 mb-12 animate-fade-in">
+                           ${categories.map(cat => `<button data-action="filter-category" data-category="${cat}" class="px-4 py-2 rounded-full font-semibold transition-colors ${state.categoryFilter === cat ? 'bg-[#2C5F2D] text-white shadow-md' : 'bg-white/50 text-[#2C5F2D] hover:bg-gray-200'}">${cat}</button>`).join('')}
+                        </div>
+                        <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 md:gap-10">
+                            ${filteredProducts.map(ProductCard).join('')}
+                            ${filteredProducts.length === 0 ? `<p class="text-center col-span-full text-gray-500">No products found for this category.</p>` : ''}
+                        </div>
+                    </div>
+                `
+            };
+            
+            templates.MyOrdersView = `
+                 <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 animate-fade-in">
+                     <h2 class="text-4xl md:text-5xl font-extrabold text-[#2C5F2D] font-serif mb-8">${t('myOrders')}</h2>
+                     <div class="bg-white/50 rounded-2xl shadow-lg border border-black/5 overflow-auto">
+                        <table class="w-full min-w-[600px]">
+                             <thead class="bg-[#2C5F2D]/5"><tr class="text-left text-[#2C5F2D] font-semibold"><th class="p-4">${t('orderId')}</th><th class="p-4">${t('date')}</th><th class="p-4">${t('total')}</th><th class="p-4">${t('status')}</th><th class="p-4">${t('actions')}</th></tr></thead>
+                             <tbody>
+                                ${orders.map(o => `
+                                    <tr key="${o.id}" class="border-t border-black/5">
+                                        <td class="p-4 font-mono text-sm truncate" title="${o.id}">${o.id.substring(0, 8)}...</td>
+                                        <td class="p-4">${new Date(o.createdAt).toLocaleDateString()}</td>
+                                        <td class="p-4 font-semibold">$${o.total.toFixed(2)}</td>
+                                        <td class="p-4"><span class="px-2 py-1 text-sm font-semibold rounded-full ${o.status === 'Pending' ? 'bg-yellow-200 text-yellow-800' : o.status === 'Shipped' ? 'bg-blue-200 text-blue-800' : 'bg-green-200 text-green-800'}">${o.status}</span></td>
+                                        <td class="p-4">
+                                             <button data-action="message-user" data-order-id="${o.id}" title="${t('messageUser')}" class="p-2 rounded-lg hover:bg-gray-200 transition-colors">${MessageSquareIcon({className:"w-5 h-5 text-gray-600"})}</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                 ${orders.length === 0 ? `<tr><td colspan="5" class="text-center p-8 text-gray-500">${t('noOrders')}</td></tr>` : ''}
+                             </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            templates.FavoritesView = `
+                <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 animate-fade-in">
+                    <h2 class="text-4xl md:text-5xl font-extrabold text-[#2C5F2D] font-serif mb-8">${t('favorites')}</h2>
+                     <p class="text-lg text-gray-600 max-w-3xl mx-auto mb-12 text-center">Your hand-picked favorites for quick and easy re-ordering.</p>
+                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 md:gap-10">
+                        <p class="text-center col-span-full text-gray-500">Feature coming soon!</p>
+                     </div>
+                </div>
+            `;
+
+
+            const CartView = () => {
+                const cartTotal = state.cart.reduce((total, item) => total + item.price * item.quantity, 0);
+                return `
+                    <div id="cart-slideout" class="fixed top-0 right-0 h-full w-full md:w-96 bg-[#FBF8F1] shadow-2xl z-50 transform transition-transform duration-300 ${state.isCartOpen ? 'translate-x-0' : 'translate-x-full'}">
+                        <div class="p-6 flex flex-col h-full">
+                            <div class="flex justify-between items-center border-b border-black/10 pb-4 mb-4"><h2 class="text-3xl font-serif font-bold text-[#2C5F2D]">${t('yourCart')}</h2><button data-action="close-cart">${XIcon({className: "w-7 h-7 text-gray-500 hover:text-[#2C5F2D]"})}</button></div>
+                            <div class="flex-grow overflow-y-auto -mr-6 pr-6 space-y-4">
+                                ${state.cart.map(item => `
+                                    <div key="${item.id}" class="flex items-center gap-4">
+                                        <img src="${item.image}" alt="${item.name}" class="w-20 h-20 rounded-lg object-cover"/>
+                                        <div class="flex-grow"><p class="font-bold text-[#2C5F2D]">${item.name}</p><p class="text-sm text-gray-500">$${item.price.toFixed(2)}</p></div>
+                                        <div class="flex items-center gap-2"><button data-action="update-cart-quantity" data-product-id="${item.id}" data-quantity="${item.quantity - 1}" class="font-bold w-6 h-6 rounded-full bg-gray-200">-</button><span>${item.quantity}</span><button data-action="update-cart-quantity" data-product-id="${item.id}" data-quantity="${item.quantity + 1}" class="font-bold w-6 h-6 rounded-full bg-gray-200">+</button></div>
+                                    </div>
+                                `).join('')}
+                                ${state.cart.length === 0 ? `<p class="text-center text-gray-500 mt-10">Your cart is empty.</p>` : ''}
+                            </div>
+                            <div class="mt-auto pt-6 border-t border-black/10">
+                                <div class="flex justify-between items-center mb-4"><span class="text-xl font-bold text-[#2C5F2D]">${t('total')}</span><span class="text-2xl font-bold font-serif text-[#2C5F2D]">$${cartTotal.toFixed(2)}</span></div>
+                                <button data-action="generate-recipe" ${state.cart.length === 0 ? 'disabled' : ''} class="w-full mb-2 py-3 bg-yellow-500 text-yellow-900 font-bold rounded-lg shadow-md hover:bg-yellow-600 transition-colors disabled:bg-gray-400 flex justify-center items-center gap-2">
+                                    ${t('generateRecipe')}
+                                </button>
+                                <button data-action="place-order" ${state.cart.length === 0 ? 'disabled' : ''} class="w-full py-4 bg-[#2C5F2D] text-white font-bold rounded-lg shadow-md hover:bg-[#5A3E2B] transition-colors disabled:bg-gray-400">${t('placeOrder')}</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            };
+            
+            const mainTemplate = `
+                <div class="bg-[#FBF8F1] min-h-screen font-sans">
+                     <header class="bg-[#FBF8F1]/80 backdrop-blur-md shadow-sm sticky top-0 z-40 border-b border-black/10">
+                        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                            <div class="flex items-center space-x-3">${LeafIcon({className: "w-9 h-9 text-[#2C5F2D]"})}<h1 class="text-2xl md:text-3xl font-bold text-[#2C5F2D] font-serif">${t('appName')}</h1></div>
+                            
+                            <nav id="buyer-desktop-nav" class="hidden lg:flex items-center gap-6">
+                                <button data-action="set-buyer-view" data-view="products" class="font-semibold text-lg ${state.buyerView === 'products' ? 'text-[#2C5F2D]' : 'text-[#5A3E2B]'} hover:text-[#2C5F2D] transition">${t('products')}</button>
+                                <button data-action="set-buyer-view" data-view="orders" class="font-semibold text-lg ${state.buyerView === 'orders' ? 'text-[#2C5F2D]' : 'text-[#5A3E2B]'} hover:text-[#2C5F2D] transition">${t('myOrders')}</button>
+                                <button data-action="set-buyer-view" data-view="favorites" class="font-semibold text-lg ${state.buyerView === 'favorites' ? 'text-[#2C5F2D]' : 'text-[#5A3E2B]'} hover:text-[#2C5F2D] transition flex items-center gap-1">${HeartIcon({filled: state.buyerView === 'favorites', className:"w-5 h-5"})} ${t('favorites')}</button>
+                                <button data-action="set-buyer-view" data-view="subscriptions" class="font-semibold text-lg ${state.buyerView === 'subscriptions' ? 'text-[#2C5F2D]' : 'text-[#5A3E2B]'} hover:text-[#2C5F2D] transition flex items-center gap-1">${RepeatIcon({className:"w-5 h-5"})} ${t('subscriptions')}</button>
+                            </nav>
+
+                            <div class="flex items-center space-x-2 sm:space-x-4">
+                                <div class="relative">
+                                    <input type="search" id="search-bar" placeholder="${t('searchProducts')}" class="hidden sm:block w-32 md:w-48 lg:w-64 pl-10 pr-4 py-2 rounded-full bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition-all duration-300" />
+                                    <div class="absolute top-1/2 -translate-y-1/2 left-3 text-gray-400 pointer-events-none">${SearchIcon({className:"w-5 h-5"})}</div>
+                                </div>
+                                <button data-action="open-cart" id="cart-button" class="relative p-2 rounded-full hover:bg-black/5 transition-colors" aria-label="Shopping Cart">
+                                    ${ShoppingCartIcon({className: "w-7 h-7 text-[#2C5F2D]"})}
+                                    ${state.cart.length > 0 ? `<span class="absolute top-0 right-0 w-5 h-5 bg-[#E57373] text-white text-xs font-bold rounded-full flex items-center justify-center">${state.cart.reduce((acc, item) => acc + item.quantity, 0)}</span>` : ''}
+                                </button>
+                                 <div class="relative">
+                                    <button data-action="toggle-language-menu" class="p-2 rounded-full hover:bg-black/5 transition-colors">${GlobeIcon({className:"w-7 h-7 text-[#2C5F2D]"})}</button>
+                                    <div id="language-menu" class="hidden absolute right-0 mt-2 w-32 bg-[#FBF8F1] rounded-xl shadow-2xl py-2 z-50 animate-fade-in-fast border border-black/10">
+                                        <button data-action="set-language" data-lang="en" class="w-full text-left px-4 py-2 hover:bg-gray-200">English</button>
+                                        <button data-action="set-language" data-lang="hi" class="w-full text-left px-4 py-2 hover:bg-gray-200">हिन्दी</button>
+                                        <button data-action="set-language" data-lang="te" class="w-full text-left px-4 py-2 hover:bg-gray-200">తెలుగు</button>
+                                    </div>
+                                 </div>
+                                ${ProfileDropdownHTML(user)}
+                                <button data-action="toggle-mobile-menu" class="lg:hidden p-2 rounded-full hover:bg-black/5 transition-colors">${MenuIcon({className:"w-7 h-7 text-[#2C5F2D]"})}</button>
+                            </div>
+                        </div>
+                    </header>
+                    <main id="buyer-content-container"></main>
+                    ${CartView()}
+                    <div id="modal-container"></div>
+                     <div id="mobile-menu-overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden" data-action="toggle-mobile-menu"></div>
+                     <nav id="buyer-mobile-nav" class="fixed top-0 right-0 h-full w-64 bg-[#FBF8F1] shadow-2xl z-50 transform translate-x-full lg:hidden transition-transform duration-300 p-6 flex flex-col">
+                        <button data-action="toggle-mobile-menu" class="self-end mb-8">${XIcon({className:"w-7 h-7"})}</button>
+                        <div class="space-y-4">
+                            <button data-action="set-buyer-view" data-view="products" class="w-full text-left font-semibold text-lg text-[#5A3E2B] hover:text-[#2C5F2D] transition">${t('products')}</button>
+                            <button data-action="set-buyer-view" data-view="orders" class="w-full text-left font-semibold text-lg text-[#5A3E2B] hover:text-[#2C5F2D] transition">${t('myOrders')}</button>
+                            <button data-action="set-buyer-view" data-view="favorites" class="w-full text-left font-semibold text-lg text-[#5A3E2B] hover:text-[#2C5F2D] transition flex items-center gap-2">${HeartIcon({className:"w-5 h-5"})} ${t('favorites')}</button>
+                            <button data-action="set-buyer-view" data-view="subscriptions" class="w-full text-left font-semibold text-lg text-[#5A3E2B] hover:text-[#2C5F2D] transition flex items-center gap-2">${RepeatIcon({className:"w-5 h-5"})} ${t('subscriptions')}</button>
+                        </div>
+                     </nav>
+                </div>
+            `;
+            return { mainTemplate, ...templates };
+        };
+        
+        const AIChatHTML = () => `
+            <div id="ai-chat-container" class="fixed bottom-24 right-5 z-40 w-full max-w-sm transform transition-all duration-300 ${state.isChatOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}">
+                <div class="bg-[#FBF8F1] rounded-2xl shadow-2xl border border-black/10 flex flex-col h-[32rem]">
+                    <header class="p-4 border-b border-black/10 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                           ${BotIcon({className: "w-7 h-7 text-[#2C5F2D]"})}
+                           <h3 class="font-bold font-serif text-xl text-[#2C5F2D]">${t('aiAssistant')}</h3>
+                        </div>
+                        <button data-action="close-chat">${XIcon({className:"w-6 h-6 text-gray-500"})}</button>
+                    </header>
+                    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-4">
+                       ${state.chatMessages.map(msg => `
+                           <div class="flex ${msg.sender === 'ai' ? 'justify-start' : 'justify-end'}">
+                               <div class="p-3 rounded-2xl max-w-xs ${msg.sender === 'ai' ? 'bg-gray-200 text-[#2C5F2D]' : 'bg-[#2C5F2D] text-white'}">
+                                   ${msg.text}
+                               </div>
+                           </div>
+                       `).join('')}
+                    </div>
+                    <footer class="p-4 border-t border-black/10">
+                        <form id="chat-form" class="flex items-center gap-2">
+                            <input type="text" id="chat-input" placeholder="${t('askSomething')}" class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" />
+                            <button type="submit" class="p-3 bg-[#2C5F2D] text-white rounded-lg shadow-md hover:bg-[#5A3E2B] transition-colors">${SendIcon({className: "w-6 h-6"})}</button>
+                        </form>
+                    </footer>
+                </div>
+            </div>
+            <button data-action="toggle-chat" class="fixed bottom-5 right-5 z-40 w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center transform hover:scale-110 transition-transform" aria-label="Open AI Assistant">
+               ${state.isChatOpen ? XIcon({className:"w-8 h-8"}) : BotIcon({className:"w-8 h-8"})}
+            </button>
+        `;
+
+        // --- Main Render Function ---
+        const render = () => {
+            const { role, currentUser, farms, products, orders, productFilter, categoryFilter } = state;
+            
+            let templates;
+            if (!role) {
+                appContainer.innerHTML = EntryScreenHTML();
+                return;
+            }
+            
+            if (role === 'farmer') {
+                templates = FarmerDashboardHTML(products.filter(p => p.ownerId === currentUser.uid), orders.filter(o => o.farmOwnerId === currentUser.uid), currentUser);
+                appContainer.innerHTML = templates.mainTemplate;
+                renderView('farmer', state.farmerView, templates);
+            } else if (role === 'buyer') {
+                templates = BuyerInterfaceHTML(farms, products, orders.filter(o => o.buyerId === currentUser.uid), currentUser);
+                appContainer.innerHTML = templates.mainTemplate;
+                renderView('buyer', state.buyerView, templates);
+            }
+            
+            const chatContainer = document.getElementById('ai-chat-wrapper') || document.createElement('div');
+            chatContainer.id = 'ai-chat-wrapper';
+            chatContainer.innerHTML = role ? AIChatHTML() : '';
+            if(!document.getElementById('ai-chat-wrapper')) document.body.appendChild(chatContainer);
+
+            const searchBar = document.getElementById('search-bar');
+            if(searchBar) searchBar.value = state.productFilter;
+        };
+
+        const renderView = (role, view, templates) => {
+            if (role === 'farmer') {
+                const container = document.getElementById('farmer-content-container');
+                if(!container) return;
+                const skeleton = `<div class="p-4 md:p-8 animate-fade-in"><div class="skeleton h-12 w-3/4 mb-8"></div><div class="skeleton h-64"></div></div>`;
+                container.innerHTML = skeleton;
+                
+                setTimeout(() => {
+                    let content = '';
+                    switch(view) {
+                        case 'products': content = templates.ProductsView; break;
+                        case 'orders': content = templates.OrdersView; break;
+                        case 'grow': content = templates.GrowGuideView; break;
+                        default: 
+                            content = templates.DashboardView;
+                            container.innerHTML = content;
+                            document.querySelectorAll('[data-count-up]').forEach(el => animateCountUp(el));
+                            return;
+                    }
+                     container.innerHTML = content;
+                }, 300);
+            } else if (role === 'buyer') {
+                 const container = document.getElementById('buyer-content-container');
+                 if (!container) return;
+                 const skeleton = `<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12"><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 md:gap-10">${[...Array(8)].map(() => `<div class="skeleton h-96"></div>`).join('')}</div></div>`;
+                 container.innerHTML = skeleton;
+                 
+                 setTimeout(() => {
+                    let content = '';
+                    switch(view) {
+                        case 'orders': content = templates.MyOrdersView; break;
+                        case 'favorites': content = templates.FavoritesView; break;
+                        case 'subscriptions': content = templates.FavoritesView.replace(t('favorites'), t('subscriptions')); break;
+                        default:
+                            let filtered = state.productFilter ? state.products.filter(p => p.name.toLowerCase().includes(state.productFilter.toLowerCase())) : state.products;
+                            if (state.categoryFilter !== 'All') filtered = filtered.filter(p => p.category === state.categoryFilter);
+                            content = templates.ProductsView(filtered);
+                            break;
+                    }
+                    container.innerHTML = content;
+                    setupScrollAnimations();
+                 }, 300);
+            }
+        };
+
+        // --- Local Data & AI Handlers ---
+        const handleSetRole = (role) => {
+            state.role = role;
+            if (role === 'farmer') {
+                state.currentUser = mockFarmer;
+            } else {
+                state.currentUser = mockBuyer;
+            }
+            state.farms = [...mockFarmsData];
+            state.products = [...mockProductsData];
+            state.orders = [];
+            state.chatMessages = [{ sender: 'ai', text: `Hello! I'm your Go Farm assistant. How can I help you today?` }];
+            render();
+        };
+
+        const handleAIChat = (message) => {
+            state.chatMessages.push({ sender: 'user', text: message });
+            render();
+            
+            const chatMessagesDiv = document.getElementById('chat-messages');
+            if(chatMessagesDiv) chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+
+            (async () => {
+                const systemInstruction = `You are a helpful and friendly AI assistant for a farmer's market app called "Go Farm". Your personality is rustic and charming. You provide concise, helpful answers related to fresh, farm-to-table food, recipes, and farming. Respond in the same language as the user's query. Current language is ${state.language}.`;
+                const aiResponse = await callGeminiAPI(message, systemInstruction);
+
+                if (aiResponse) {
+                    state.chatMessages.push({ sender: 'ai', text: aiResponse });
+                    render();
+                    if(chatMessagesDiv) chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+                }
+            })();
+        };
+        
+        const handleAddProduct = (productData) => {
+            const newProduct = { ...productData, id: `p${Date.now()}`, ownerId: state.currentUser.uid, reviews: [] };
+            state.products.push(newProduct);
+            showToast(t('Product added successfully!'));
+            state.farmerView = 'products';
+            render();
+        };
+
+        const handleUpdateProduct = (productId, productData) => {
+            const productIndex = state.products.findIndex(p => p.id === productId);
+            if (productIndex !== -1) {
+                state.products[productIndex] = { ...state.products[productIndex], ...productData };
+                showToast(t('Product updated successfully!'));
+                state.farmerView = 'products';
+                render();
+            }
+        };
+
+        const handleDeleteProduct = (productId) => {
+            const modalContent = `
+                <div class="p-8 text-center">
+                    <h2 class="text-2xl font-bold font-serif text-[#2C5F2D] mb-4">${t('confirmDelete')}</h2>
+                    <p class="text-gray-600 mb-6">${t('confirmDeleteMessage')}</p>
+                    <div class="flex justify-center gap-4">
+                        <button data-action="close-modal" data-target="confirm-delete-modal" class="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">${t('cancel')}</button>
+                        <button data-action="confirm-delete" data-product-id="${productId}" class="px-6 py-2 bg-[#E57373] text-white font-semibold rounded-lg hover:bg-red-700">${t('delete')}</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('modal-container').innerHTML = ModalHTML(modalContent, 'confirm-delete-modal');
+        };
+        
+        const handleUpdateOrderStatus = (orderId, status) => {
+             const order = state.orders.find(o => o.id === orderId);
+             if(order) {
+                order.status = status;
+                showToast(`Order status updated to ${status}.`);
+                render();
+             }
+        };
+
+        const handlePlaceOrder = (cart, total) => {
+            const newOrder = {
+                id: `o${Date.now()}`, buyerId: state.currentUser.uid, buyerName: state.currentUser.displayName, items: [...cart], total: total, status: 'Pending', createdAt: new Date().toISOString(), farmOwnerId: cart[0].ownerId, messages: [],
+            };
+            state.orders.push(newOrder);
+            state.cart = [];
+            state.isCartOpen = false;
+            showToast("Order placed successfully!");
+            render();
+        };
+
+        const handleShowProductModal = (product = null) => {
+            const modalContent = `
+                 <div class="p-8">
+                    <h2 class="text-3xl font-bold font-serif text-[#2C5F2D] mb-6">${product ? t('editProductTitle') : t('addProductTitle')}</h2>
+                    <form id="product-form" class="space-y-4">
+                        <input type="hidden" name="id" value="${product?.id || ''}" />
+                        <input type="text" name="name" value="${product?.name || ''}" placeholder="${t('productName')}" required class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" />
+                        <div class="flex gap-4">
+                            <input type="number" name="price" value="${product?.price || ''}" placeholder="${t('price')}" step="0.01" required class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" />
+                            <input type="text" name="unit" value="${product?.unit || 'kg'}" placeholder="${t('unit')}" required class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" />
+                        </div>
+                        <div class="flex gap-4">
+                            <input type="number" name="stock" value="${product?.stock || ''}" placeholder="${t('stock')}" required class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" />
+                            <select name="category" class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition">
+                                ${['Vegetables', 'Fruits', 'Dairy & Eggs', 'Grains', 'Meats', 'Other'].map(c => `<option ${product?.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                             <textarea name="description" placeholder="${t('description')}" rows="3" class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition">${product?.description || ''}</textarea>
+                             <button type="button" data-action="generate-description" class="mt-1 text-sm text-[#2C5F2D] font-semibold hover:underline flex items-center gap-1">${t('writeForMe')}</button>
+                        </div>
+                        <input type="text" id="product-image-url" name="image" value="${product?.image || ''}" placeholder="${t('imageUrl')}" required class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" />
+                        <img id="image-preview" src="${product?.image || 'https://placehold.co/600x200/e2e8f0/a0aec0?text=Image%20Preview'}" class="w-full h-40 object-cover rounded-lg bg-gray-200 mt-2" />
+                        <button type="submit" class="w-full py-3 bg-[#2C5F2D] text-white font-bold rounded-lg shadow-md hover:bg-[#5A3E2B] transition-all duration-300 flex justify-center items-center h-12">
+                            <span class="submit-text">${product ? t('saveChanges') : t('addProduct')}</span>
+                            <span class="spinner hidden">${SpinnerIcon({className:"text-white"})}</span>
+                        </button>
+                    </form>
+                </div>
+            `;
+            document.getElementById('modal-container').innerHTML = ModalHTML(modalContent, 'product-modal');
+        };
+
+        const animateCountUp = (el) => {
+            const target = parseFloat(el.dataset.countUp);
+            const prefix = el.dataset.prefix || '';
+            let current = 0;
+            const duration = 1500;
+            const increment = target / (duration / 16);
+            
+            const update = () => {
+                if (current < target) {
+                    current += increment;
+                    el.innerText = prefix + Math.ceil(current).toFixed(2).replace(/\.00$/, '');
+                    requestAnimationFrame(update);
+                } else {
+                    el.innerText = prefix + target.toFixed(2).replace(/\.00$/, '');
+                }
+            };
+            requestAnimationFrame(update);
+        };
+
+        const setupScrollAnimations = () => {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if(entry.isIntersecting) {
+                        entry.target.classList.add('scroll-animate-in');
+                    }
+                });
+            }, { threshold: 0.1 });
+            document.querySelectorAll('.scroll-animate').forEach(el => observer.observe(el));
+        };
+
+        const renderMessages = (orderId) => {
+            const order = state.orders.find(o => o.id === orderId);
+            const messageContainer = document.querySelector('#messaging-modal #message-list');
+            if (order && messageContainer) {
+                messageContainer.innerHTML = order.messages.map(msg => `
+                    <div class="flex ${msg.sender === state.role ? 'justify-end' : 'justify-start'}">
+                        <div class="p-3 rounded-2xl max-w-xs ${msg.sender === state.role ? 'bg-[#2C5F2D] text-white' : 'bg-gray-200 text-[#2C5F2D]'}">
+                            ${msg.text}
+                        </div>
+                    </div>
+                `).join('');
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+            }
+        };
+        
+        // --- Event Delegation ---
+        document.body.addEventListener('click', async (e) => {
+            const actionTarget = e.target.closest('[data-action]');
+            if (!actionTarget) {
+                if (state.isProfileDropdownOpen && !e.target.closest('#profile-dropdown')) {
+                    state.isProfileDropdownOpen = false;
+                    render();
+                }
+                 if (!e.target.closest('[data-action="toggle-language-menu"]')) {
+                    document.getElementById('language-menu')?.classList.add('hidden');
+                }
+                return;
+            }
+
+            const { action, role, view, productId, target, farmId, category, orderId, lang } = actionTarget.dataset;
+            
+            switch(action) {
+                case 'set-role': handleSetRole(role); break;
+                case 'exit-role': 
+                    state.role = null; state.currentUser = null; state.cart = []; state.isChatOpen = false;
+                    render(); 
+                    break;
+                case 'set-farmer-view': state.farmerView = view; render(); break;
+                case 'set-buyer-view': state.productFilter = ''; state.buyerView = view; state.isMobileMenuOpen = false; render(); break;
+                case 'add-product': handleShowProductModal(); break;
+                case 'edit-product': {
+                    const product = state.products.find(p => p.id === productId);
+                    handleShowProductModal(product);
+                    break;
+                }
+                case 'delete-product': handleDeleteProduct(productId); break;
+                case 'confirm-delete': {
+                    state.products = state.products.filter(p => p.id !== productId);
+                    showToast("Product deleted.");
+                    document.getElementById('confirm-delete-modal')?.remove();
+                    render();
+                    break;
+                }
+                case 'close-modal': document.getElementById(target)?.remove(); break;
+                case 'open-cart': state.isCartOpen = true; render(); break;
+                case 'close-cart': state.isCartOpen = false; render(); break;
+                case 'toggle-profile-dropdown': state.isProfileDropdownOpen = !state.isProfileDropdownOpen; render(); break;
+                case 'toggle-language-menu': document.getElementById('language-menu')?.classList.toggle('hidden'); break;
+                case 'set-language': state.language = lang; render(); break;
+                case 'toggle-chat': state.isChatOpen = !state.isChatOpen; render(); break;
+                case 'close-chat': state.isChatOpen = false; render(); break;
+                case 'filter-category': state.categoryFilter = category; render(); break;
+                case 'toggle-mobile-menu': 
+                    state.isMobileMenuOpen = !state.isMobileMenuOpen;
+                    if(state.role === 'farmer'){
+                        document.getElementById('farmer-sidebar')?.classList.toggle('-translate-x-full');
+                        document.getElementById('mobile-menu-overlay')?.classList.toggle('hidden');
+                    } else if (state.role === 'buyer'){
+                        document.getElementById('buyer-mobile-nav')?.classList.toggle('translate-x-full');
+                        document.getElementById('mobile-menu-overlay')?.classList.toggle('hidden');
+                    }
+                    break;
+                case 'add-to-cart': {
+                    e.stopPropagation(); // Prevent modal from opening
+                    const product = state.products.find(p => p.id === productId);
+                    if (product) {
+                        const existingItem = state.cart.find(item => item.id === productId);
+                        if (existingItem) {
+                            existingItem.quantity++;
+                        } else {
+                            state.cart.push({ ...product, quantity: 1 });
+                        }
+                        showToast(`${product.name} added to cart!`);
+                        const cartButton = document.getElementById('cart-button');
+                        if (cartButton) {
+                            cartButton.classList.add('animate-shake');
+                            setTimeout(() => cartButton.classList.remove('animate-shake'), 500);
+                        }
+                        render();
+                    }
+                    break;
+                }
+                case 'update-cart-quantity': {
+                     const quantity = parseInt(actionTarget.dataset.quantity);
+                     if (quantity < 1) {
+                        state.cart = state.cart.filter(item => item.id !== productId);
+                     } else {
+                        const item = state.cart.find(item => item.id === productId);
+                        if (item) item.quantity = quantity;
+                     }
+                     render();
+                     break;
+                }
+                case 'place-order': {
+                    const cartTotal = state.cart.reduce((total, item) => total + item.price * item.quantity, 0);
+                    handlePlaceOrder(state.cart, cartTotal);
+                    break;
+                }
+                case 'generate-recipe': {
+                    const button = actionTarget;
+                    button.disabled = true;
+                    button.innerHTML = `${SpinnerIcon({className:"text-yellow-900"})} ${state.language === 'hi' ? 'बनाया जा रहा है...' : 'Generating...'}`;
+                    const ingredients = state.cart.map(item => item.name).join(', ');
+                    const prompt = `Create a simple and delicious recipe in ${state.language === 'hi' ? 'Hindi' : (state.language === 'te' ? 'Telugu' : 'English')} using the following ingredients: ${ingredients}. Provide a creative name for the recipe, a short and appealing description, a formatted list of ingredients (including those provided), and clear, step-by-step instructions.`;
+                    const systemInstruction = `You are a creative chef for a farm-to-table recipe blog. Your tone is warm, encouraging, and rustic. Format the output with markdown using # for the title, ## for subheadings, and * for list items.`;
+                    const recipeText = await callGeminiAPI(prompt, systemInstruction);
+                    
+                    if (recipeText) {
+                        const recipeHTML = recipeText
+                            .replace(/^# (.*$)/gim, '<h2 class="text-3xl font-bold font-serif text-[#2C5F2D] mb-4">$1</h2>')
+                            .replace(/^## (.*$)/gim, '<h3 class="text-xl font-bold font-serif text-[#2C5F2D] mt-4 mb-2">$1</h3>')
+                            .replace(/^\* (.*$)/gim, '<li class="ml-5 list-disc">$1</li>')
+                            .replace(/\n/g, '<br>');
+
+                        const modalContent = `<div class="p-8">${recipeHTML}</div>`;
+                        document.getElementById('modal-container').innerHTML = ModalHTML(modalContent, 'recipe-modal');
+                    }
+                    button.disabled = false;
+                    button.innerHTML = `✨ ${t('generateRecipe')}`;
+                    break;
+                }
+                case 'generate-description': {
+                    const button = actionTarget;
+                    const form = button.closest('form');
+                    const productName = form.querySelector('input[name="name"]').value;
+                    const productCategory = form.querySelector('select[name="category"]').value;
+                    const descriptionTextarea = form.querySelector('textarea[name="description"]');
+                    
+                    if (!productName) {
+                        showToast("Please enter a product name first.");
+                        return;
+                    }
+
+                    button.disabled = true;
+                    button.innerHTML = `${SpinnerIcon({className:"text-forest-green"})} ${state.language === 'hi' ? 'लिख रहा हूँ...' : 'Writing...'}`;
+                    
+                    const prompt = `Write an appealing, short, and rustic-sounding product description in ${state.language === 'hi' ? 'Hindi' : (state.language === 'te' ? 'Telugu' : 'English')} for a farmer's market app. The product is "${productName}" in the "${productCategory}" category. Make it sound fresh and delicious. Limit it to 2-3 sentences.`;
+                    const description = await callGeminiAPI(prompt);
+
+                    if (description) {
+                        descriptionTextarea.value = description;
+                    }
+
+                    button.disabled = false;
+                    button.innerHTML = `✨ ${t('writeForMe')}`;
+                    break;
+                }
+                case 'show-farm-profile': {
+                    e.stopPropagation();
+                    const farm = state.farms.find(f => f.id === farmId);
+                    const farmProducts = state.products.filter(p => p.ownerId === farm.ownerId);
+                     const modalContent = `
+                        <div class="p-8">
+                           <h2 class="text-3xl font-bold font-serif text-[#2C5F2D] mb-2">${farm.name}</h2>
+                           <p class="text-gray-600 mb-6">${farm.description}</p>
+                           <h3 class="text-2xl font-bold font-serif text-[#2C5F2D] mb-4">${t('products')} from this farm</h3>
+                           <div class="space-y-4 max-h-64 overflow-y-auto">
+                            ${farmProducts.map(p => `
+                                <div class="flex items-center gap-4">
+                                    <img src="${p.image}" class="w-16 h-16 rounded-lg object-cover" />
+                                    <div>
+                                        <p class="font-semibold text-[#2C5F2D]">${p.name}</p>
+                                        <p class="text-gray-500">$${p.price.toFixed(2)}</p>
+                                    </div>
+                                </div>
+                            `).join('')}
+                           </div>
+                        </div>
+                     `;
+                     document.getElementById('modal-container').innerHTML = ModalHTML(modalContent, 'farm-profile-modal');
+                    break;
+                }
+                 case 'show-product-details': {
+                    const product = state.products.find(p => p.id === productId);
+                    const avgRating = product.reviews.length > 0 ? (product.reviews.reduce((acc, r) => acc + r.rating, 0) / product.reviews.length) : 0;
+                     const modalContent = `
+                        <div>
+                           <img src="${product.image}" class="w-full h-64 object-cover rounded-t-2xl" />
+                           <div class="p-8">
+                               <h2 class="text-4xl font-bold font-serif text-[#2C5F2D] mb-2">${product.name}</h2>
+                               <div class="flex items-center gap-2 mb-4">
+                                ${[...Array(5)].map((_, i) => StarIcon({filled: i < avgRating, className: "w-6 h-6 text-yellow-500"})).join('')}
+                                <span class="text-gray-600 font-semibold">${avgRating > 0 ? avgRating.toFixed(1) : t('noReviews')}</span>
+                               </div>
+                               <p class="text-gray-600 mb-6">${product.description}</p>
+                               <button data-action="get-pairing-ideas" data-product-name="${product.name}" class="w-full mb-6 py-3 bg-indigo-100 text-indigo-800 font-bold rounded-lg shadow-sm hover:bg-indigo-200 transition-colors flex justify-center items-center gap-2">
+                                    ${t('getPairingIdeas')}
+                               </button>
+                               <div id="pairing-ideas-container"></div>
+                               <div class="border-t border-black/10 pt-6">
+                                <h3 class="text-2xl font-bold font-serif text-[#2C5F2D] mb-4">${t('reviews')}</h3>
+                                <div class="space-y-4 max-h-48 overflow-y-auto mb-6">
+                                    ${product.reviews.map(review => `
+                                        <div class="bg-white/50 p-4 rounded-lg">
+                                            <div class="flex items-center gap-2">${[...Array(5)].map((_, i) => StarIcon({filled: i < review.rating, className: "w-4 h-4 text-yellow-500"})).join('')}</div>
+                                            <p class="text-gray-700 my-1">"${review.text}"</p>
+                                            <p class="text-sm text-gray-500 font-semibold">- ${review.author}</p>
+                                        </div>
+                                    `).join('')}
+                                    ${product.reviews.length === 0 ? `<p class="text-gray-500">${t('noReviews')}</p>` : ''}
+                                </div>
+                               </div>
+                           </div>
+                        </div>
+                     `;
+                      document.getElementById('modal-container').innerHTML = ModalHTML(modalContent, 'product-details-modal');
+                    break;
+                }
+                case 'get-pairing-ideas': {
+                    const button = actionTarget;
+                    const container = document.getElementById('pairing-ideas-container');
+                    const productName = button.dataset.productName;
+                    
+                    button.disabled = true;
+                    container.innerHTML = `<div class="flex justify-center p-4">${SpinnerIcon({className:"text-indigo-800"})}</div>`;
+
+                    const prompt = `What are 3-5 delicious food items or ingredients that pair well with ${productName}? Provide the answer as a simple, comma-separated list in ${state.language === 'hi' ? 'Hindi' : (state.language === 'te' ? 'Telugu' : 'English')}. For example: Basil, Mozzarella, Balsamic Vinegar`;
+                    const pairings = await callGeminiAPI(prompt);
+                    
+                    if(pairings) {
+                        container.innerHTML = `
+                            <h4 class="text-lg font-bold font-serif text-[#2C5F2D] mb-2">${t('pairsWellWith')}</h4>
+                            <div class="flex flex-wrap gap-2">
+                                ${pairings.split(',').map(item => `<span class="bg-indigo-200 text-indigo-800 px-3 py-1 rounded-full text-sm font-semibold">${item.trim()}</span>`).join('')}
+                            </div>
+                        `;
+                    } else {
+                        container.innerHTML = '';
+                    }
+                    button.remove();
+                    break;
+                }
+                case 'message-user': {
+                    const order = state.orders.find(o => o.id === orderId);
+                    const otherPartyName = state.role === 'farmer' ? order.buyerName : state.farms.find(f => f.ownerId === order.farmOwnerId).name;
+                    const modalContent = `
+                        <div class="p-6">
+                            <h2 class="text-2xl font-bold font-serif text-[#2C5F2D] mb-4">${t('messageAboutOrder')} #${order.id.substring(0, 8)}</h2>
+                            <div class="bg-white p-4 rounded-lg h-64 overflow-y-auto mb-4 flex flex-col gap-3" id="message-list">
+                                <!-- Messages will be rendered here -->
+                            </div>
+                            <form id="message-form" data-order-id="${order.id}" class="flex gap-2">
+                                <input type="text" id="message-input" class="w-full p-3 rounded-lg bg-white/50 border-2 border-transparent focus:border-[#FDB833] focus:ring-0 transition" placeholder="Type your message...">
+                                <button type="submit" class="p-3 bg-[#2C5F2D] text-white rounded-lg shadow-md hover:bg-[#5A3E2B] transition-colors">${SendIcon({className:"w-6 h-6"})}</button>
+                            </form>
+                        </div>
+                    `;
+                    document.getElementById('modal-container').innerHTML = ModalHTML(modalContent, 'messaging-modal');
+                    renderMessages(orderId);
+                    break;
+                }
+            }
+        });
+
+        document.body.addEventListener('submit', async (e) => {
+            if(e.target.id === 'product-form') {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const productData = Object.fromEntries(formData.entries());
+                const productId = productData.id;
+
+                const submitButton = e.target.querySelector('button[type="submit"]');
+                const spinner = submitButton.querySelector('.spinner');
+                submitButton.disabled = true;
+                spinner.classList.remove('hidden');
+
+                const dataToSave = {
+                    ...productData,
+                    price: parseFloat(productData.price),
+                    stock: parseInt(productData.stock),
+                };
+                delete dataToSave.id;
+
+                if (productId) {
+                    handleUpdateProduct(productId, dataToSave);
+                } else {
+                    handleAddProduct(dataToSave);
+                }
+                
+                document.getElementById('product-modal')?.remove();
+            }
+            if (e.target.id === 'chat-form') {
+                e.preventDefault();
+                const input = document.getElementById('chat-input');
+                if (input.value.trim()) {
+                    handleAIChat(input.value.trim());
+                    input.value = '';
+                }
+            }
+            if (e.target.id === 'grow-guide-form') {
+                 e.preventDefault();
+                 const button = e.target.querySelector('button[type="submit"]');
+                 const input = document.getElementById('grow-guide-input');
+                 const responseContainer = document.getElementById('grow-guide-response');
+
+                 if (!input.value.trim()) {
+                    showToast("Please enter a question.");
+                    return;
+                 }
+
+                 button.disabled = true;
+                 button.innerHTML = `${SpinnerIcon({className:"text-white"})} ${state.language === 'hi' ? 'सलाह मिल रही है...' : (state.language === 'te' ? 'సలహా పొందుతోంది...' : 'Getting Advice...')}`;
+                 responseContainer.innerHTML = `<div class="flex justify-center p-8">${SpinnerIcon({className:"text-[#2C5F2D]"})}</div>`;
+
+                 const prompt = `${input.value}. Please respond in ${state.language === 'hi' ? 'Hindi' : (state.language === 'te' ? 'Telugu' : 'English')}.`;
+                 const systemInstruction = "You are an expert agronomist and farmer's almanac. Provide clear, concise, and actionable advice for a small-scale farmer. Format your answer with markdown using ## for subheadings and * for list items.";
+                 const advice = await callGeminiAPI(prompt, systemInstruction);
+
+                 if(advice) {
+                    const adviceHTML = advice
+                        .replace(/^## (.*$)/gim, '<h3 class="text-xl font-bold font-serif text-[#2C5F2D] mt-4 mb-2">$1</h3>')
+                        .replace(/^\* (.*$)/gim, '<li class="ml-5 list-disc">$1</li>')
+                        .replace(/\n/g, '<br>');
+                    responseContainer.innerHTML = adviceHTML;
+                 } else {
+                    responseContainer.innerHTML = "Sorry, I couldn't get advice for that. Please try again.";
+                 }
+
+                 button.disabled = false;
+                 button.innerHTML = `${LightbulbIcon({className:"w-5 h-5"})} ${t('getAdvice')}`;
+            }
+             if (e.target.id === 'message-form') {
+                e.preventDefault();
+                const orderId = e.target.dataset.orderId;
+                const input = document.getElementById('message-input');
+                const messageText = input.value.trim();
+                if(!messageText) return;
+
+                const order = state.orders.find(o => o.id === orderId);
+                if (order) {
+                    order.messages.push({
+                        sender: state.role,
+                        text: messageText,
+                        timestamp: new Date().toISOString()
+                    });
+                    input.value = '';
+                    renderMessages(orderId);
+
+                    // Simulate a reply
+                    setTimeout(() => {
+                        order.messages.push({
+                            sender: state.role === 'farmer' ? 'buyer' : 'farmer',
+                            text: "Okay, thank you for letting me know!",
+                            timestamp: new Date().toISOString()
+                        });
+                        renderMessages(orderId);
+                    }, 1500);
+                }
+            }
+        });
+        
+        document.body.addEventListener('change', (e) => {
+             const actionTarget = e.target.closest('[data-action="update-order-status"]');
+             if (actionTarget) {
+                const orderId = actionTarget.dataset.orderId;
+                const status = actionTarget.value;
+                handleUpdateOrderStatus(orderId, status);
+             }
+        });
+
+        document.body.addEventListener('input', (e) => {
+            if(e.target.id === 'product-image-url') {
+                const preview = document.getElementById('image-preview');
+                if(preview) {
+                    preview.src = e.target.value || 'https://placehold.co/600x200/e2e8f0/a0aec0?text=Image%20Preview';
+                }
+            }
+            if (e.target.id === 'search-bar') {
+                state.productFilter = e.target.value;
+                state.buyerView = 'products';
+                render();
+            }
+        });
+        
+        // --- Initialization ---
+        const initialize = () => {
+            render();
+        };
+
+        initialize();
+
+    </script>
+    <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(() => console.log("✅ Service Worker registered"))
+      .catch(err => console.log("⚠️ SW failed:", err));
+  }
+</script>
+
+</body>
+</html>
